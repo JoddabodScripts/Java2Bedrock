@@ -1,0 +1,21 @@
+{
+	"schemaVersion": 1,
+	"id": "j2bdemo",
+	"version": "${version}",
+	"name": "Java2Bedrock Demo",
+	"description": "One custom block and one custom item that work on unmodded Java clients through Polymer.",
+	"authors": ["JoddabodScripts"],
+	"environment": "*",
+	"entrypoints": {
+		"main": ["io.github.joddabodscripts.j2b.demo.J2bDemo"]
+	},
+	"depends": {
+		"fabricloader": ">=0.20.0",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": "*",
+		"polymer-core": "*",
+		"polymer-blocks": "*",
+		"polymer-resource-pack": "*"
+	}
+}
