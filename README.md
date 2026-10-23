@@ -27,51 +27,54 @@ See [`CrystalBlock.java`](demo/src/main/java/io/github/joddabodscripts/j2b/demo/
 
 ## The bridge
 
-Put `j2b-bridge` in `mods/` next to the mods you want to run. Nothing else changes. The bridge waits until every mod has registered its content, then, just before the registries freeze, it walks them and tells Polymer how to show each modded entry to a vanilla client. Mods that already depend on Polymer are left alone.
+Put `j2b-bridge` in the server's `mods/` folder next to the mods you want to run. Nothing else changes, and nobody writes compat code. The bridge waits until every mod has registered its content, then, just before the registries freeze, it walks them and tells Polymer how to show each modded entry to a vanilla client. Mods that already depend on Polymer are left alone.
 
 | Mod content | What vanilla clients get |
 | --- | --- |
 | Items | A vanilla item carrying the mod's name, model and components. The mod's item model files go into the resource pack. Model types the client doesn't know are swapped for the plain model inside them. |
 | Full blocks and plants | A spare vanilla block state (note block, sapling, tripwire, kelp) pointed at the mod's own model. |
-| Other block shapes | An invisible stand-in with collision, plus item display entities drawing the block's models. |
-| Signs | A vanilla oak sign with the same rotation, so text editing works. |
+| Other block shapes | An invisible vanilla state with about the same shape, so the outline and collision fit, plus item display entities drawing the block's models. A cutting board stands on a closed trapdoor, a pot on a slab. |
+| Things drawn on blocks | The mod's own block entity renderer, run on the server. Each item it draws becomes an item display entity with the same pose. |
+| Signs | The sign's own model, with its text drawn by text display entities. To edit one, the player is shown a vanilla sign in that spot while the editor is open. |
 | Menus | A chest menu. Each slot sits about where the mod's screen draws it, and one cell shows progress for menus that track any. |
 | Entities | The vanilla entity sharing the base class, so a thrown item stays a thrown item. |
+| Effects | A vanilla effect the client doesn't act on, like Luck, renamed and re-iconed in the resource pack. |
 | Sounds, particles | Sounds play from the resource pack. Particles fall back to a close vanilla one. |
-| Recipe book entries, data components, effects, attributes | Kept on the server. |
+| Recipe book entries, data components, attributes | Kept on the server. |
 
-Block entity renderers are the one place that needs code, because they only exist on the client. `BlockEntityVisuals` takes a function that lists the items a renderer would draw and the pose for each. The pose uses the same origin and units as a renderer's `PoseStack`, so the code is mostly copied from the renderer. [`FarmersDelightVisuals`](bridge/src/main/java/io/github/joddabodscripts/j2b/bridge/compat/FarmersDelightVisuals.java) does it for the cutting board, stove and skillet in about 60 lines.
+### Running renderers on the server
 
-```java
-BlockEntityVisuals.<SkilletBlockEntity>register(id("skillet"), (skillet, out) -> {
-	Direction facing = skillet.getBlockState().getValue(SkilletBlock.FACING);
-	out.accept(new ItemPart(skillet.getStoredStack(), new Matrix4f()
-			.translate(0.5f, 0.13f, 0.5f).rotateY(rad(-facing.toYRot())).rotateX(rad(90)).scale(0.5f),
-			ItemDisplayContext.FIXED));
-});
-```
+Block entity renderers are client code, but they ship inside the mod's jar on a server too. Only the client classes they call are missing. The bridge has its own small versions of the few a typical renderer touches: the matrix stack, item render states and the renderer interface (`bridge/src/shim/java`). It finds every renderer in the mod's jar, builds it, and runs it each tick for blocks players can see. When the renderer draws an item, the bridge gets the stack and the exact matrix and moves a display entity there.
+
+A renderer that needs more of the client, such as fonts, entity models or `Minecraft.getInstance()`, fails to link. The bridge logs it once and skips it. Those block entities still work, they just don't show what the renderer would draw. Because the stand-in classes carry client class names, the bridge only loads on servers (`"environment": "server"`).
+
+`BlockEntityVisuals` is still there for a renderer the bridge can't run. It takes a function that lists the items to draw and the pose for each, in the same units as a `PoseStack`.
 
 ### Farmer's Delight on a vanilla client
 
-Checked by playing on a stock 26.3 client:
+Checked by playing on a stock 26.3 client, with audio going to a file and subtitles on:
 
 - Every item and block shows its real texture and name, crops grow, and advancements and recipe toasts pop up.
 - The cooking pot opens and cooks. Tomato sauce came out after filling the ingredients and a bowl.
-- Food sits on the cutting board, skillet and stove. Cutting a cabbage with a knife on the board drops the leaves, and beef in a skillet on a lit stove comes out as steak.
+- Food sits on the cutting board, skillet and stove, drawn by Farmer's Delight's own renderers. Cutting a cabbage with a knife on the board drops the leaves, and beef in a skillet on a lit stove comes out as steak.
+- Sounds play. The subtitles read "Knife cuts", "Skillet hisses" and "Cooking Pot boils".
+- Comfort and Nourishment show in the effect list with their own icons and names.
+- Canvas signs show their canvas texture (plain and red tested), glowing text works, and they can be written on.
 - Rotten tomatoes fly as thrown tomatoes. Steam and star particles show.
-- Canvas signs can be placed and written on.
+- Aiming at a cutting board or skillet gives a thin outline, not a full cube.
 
 | | |
 | --- | --- |
 | ![Cooking pot menu](docs/screenshots/fd-cooking-pot.png) | ![Food on the stove](docs/screenshots/fd-stove.png) |
-| ![Cutting board after cutting](docs/screenshots/fd-cutting-board.png) | ![Canvas sign](docs/screenshots/fd-canvas-sign.png) |
+| ![Canvas signs](docs/screenshots/fd-canvas-sign.png) | ![Effects](docs/screenshots/fd-effects.png) |
+| ![Cutting board after cutting](docs/screenshots/fd-cutting-board.png) | ![Sound subtitles](docs/screenshots/fd-sound-subtitles.png) |
 
-What doesn't carry over:
+What still doesn't carry over:
 
-- Comfort and Nourishment still work, but the client doesn't list them, since it can't show an effect it has never heard of. The hunger bar overlay they come with is client code, so that's gone too.
-- Canvas signs look like oak signs.
-- Blocks that aren't full cubes or plants have a full-cube outline when you aim at them, because the stand-in is a barrier.
-- No sounds were heard during testing. The client in the test box has no audio device. The sound files are in the pack and nothing errors.
+- A player who really has Luck or Bad Luck sees it named Nourishment or Comfort. Those two effects are rare in survival, which is why they were picked.
+- Comfort and Nourishment also tint the hunger bar in the real mod. That is HUD code, and vanilla clients don't have it.
+- The sign editor shows an oak sign while typing.
+- Outlines are the closest vanilla shape, not the exact one.
 
 ## Running the server
 
