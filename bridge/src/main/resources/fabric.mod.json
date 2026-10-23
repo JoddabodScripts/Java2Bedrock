@@ -1,0 +1,24 @@
+{
+	"schemaVersion": 1,
+	"id": "j2bbridge",
+	"version": "${version}",
+	"name": "Java2Bedrock Bridge",
+	"description": "Makes ordinary Fabric mods work for players on unmodded clients, without changing the mods.",
+	"authors": ["JoddabodScripts"],
+	"environment": "server",
+	"entrypoints": {
+		"preLaunch": ["io.github.joddabodscripts.j2b.bridge.client.ClientClasses"],
+		"main": ["io.github.joddabodscripts.j2b.bridge.J2bBridge"]
+	},
+	"mixins": ["j2bbridge.mixins.json"],
+	"depends": {
+		"fabricloader": ">=0.20.0",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": "*",
+		"polymer-core": "*",
+		"polymer-blocks": "*",
+		"polymer-resource-pack": "*",
+		"polymer-virtual-entity": "*"
+	}
+}
