@@ -7,6 +7,7 @@
 	"authors": ["JoddabodScripts"],
 	"environment": "server",
 	"entrypoints": {
+		"preLaunch": ["io.github.joddabodscripts.j2b.bridge.client.ClientClasses"],
 		"main": ["io.github.joddabodscripts.j2b.bridge.J2bBridge"]
 	},
 	"mixins": ["j2bbridge.mixins.json"],

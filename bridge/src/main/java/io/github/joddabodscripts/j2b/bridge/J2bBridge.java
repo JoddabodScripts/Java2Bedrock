@@ -1,7 +1,11 @@
 package io.github.joddabodscripts.j2b.bridge;
 
 import io.github.joddabodscripts.j2b.bridge.block.SignEditing;
+import io.github.joddabodscripts.j2b.bridge.entity.EntityVisualHolder;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.minecraft.server.MinecraftServer;
+import org.jspecify.annotations.Nullable;
 import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,11 +20,19 @@ import org.slf4j.LoggerFactory;
 public class J2bBridge implements ModInitializer {
 	public static final String MOD_ID = "j2bbridge";
 	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
+	private static @Nullable MinecraftServer server;
 
 	@Override
 	public void onInitialize() {
 		BridgedMods.load();
 		SignEditing.register();
+		ServerLifecycleEvents.SERVER_STARTING.register(server -> J2bBridge.server = server);
+		ServerLifecycleEvents.SERVER_STOPPED.register(server -> J2bBridge.server = null);
+		EntityVisualHolder.register();
+	}
+
+	public static @Nullable MinecraftServer server() {
+		return server;
 	}
 
 	public static Identifier id(String path) {

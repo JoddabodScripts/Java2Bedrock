@@ -9,6 +9,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.util.GsonHelper;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.Property;
+import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -58,23 +59,47 @@ public final class BlockModels {
 
 	private static List<ModelRef> refs(JsonElement element) {
 		List<ModelRef> refs = new ArrayList<>();
-		if (element.isJsonArray()) {
-			for (JsonElement e : element.getAsJsonArray()) {
-				refs.add(ref(e.getAsJsonObject()));
+		for (JsonElement e : element.isJsonArray() ? element.getAsJsonArray() : List.of(element)) {
+			ModelRef ref = ref(e.getAsJsonObject());
+			if (ref != null) {
+				refs.add(ref);
 			}
-		} else {
-			refs.add(ref(element.getAsJsonObject()));
 		}
 		return refs;
 	}
 
-	private static ModelRef ref(JsonObject obj) {
+	private static @Nullable ModelRef ref(JsonObject obj) {
+		Identifier model = obj.has("model") ? Identifier.tryParse(GsonHelper.getAsString(obj, "model")) : customModel(obj);
+		if (model == null) {
+			return null;
+		}
+		// A custom model loader may keep the rotation in a nested object.
+		JsonObject rotation = obj.has("model") ? obj : GsonHelper.getAsJsonObject(obj, "state", obj);
 		return new ModelRef(
-				Identifier.parse(GsonHelper.getAsString(obj, "model")),
-				GsonHelper.getAsInt(obj, "x", 0),
-				GsonHelper.getAsInt(obj, "y", 0),
-				GsonHelper.getAsBoolean(obj, "uvlock", false),
+				model,
+				GsonHelper.getAsInt(rotation, "x", 0),
+				GsonHelper.getAsInt(rotation, "y", 0),
+				GsonHelper.getAsBoolean(rotation, "uvlock", false),
 				GsonHelper.getAsInt(obj, "weight", 1));
+	}
+
+	/**
+	 * Some mods register their own model loader on the client (Fabric's {@code fabric:type}) and
+	 * list the models it switches between as plain fields. The server can't run that loader, so it
+	 * shows the first listed model that exists.
+	 */
+	private static @Nullable Identifier customModel(JsonObject obj) {
+		for (Map.Entry<String, JsonElement> entry : obj.entrySet()) {
+			if (!entry.getValue().isJsonPrimitive() || !entry.getValue().getAsJsonPrimitive().isString() || entry.getKey().contains(":")) {
+				continue;
+			}
+			Identifier id = Identifier.tryParse(entry.getValue().getAsString());
+			if (id != null && (id.getNamespace().equals(Identifier.DEFAULT_NAMESPACE)
+					|| Assets.json("assets/" + id.getNamespace() + "/models/" + id.getPath() + ".json").isPresent())) {
+				return id;
+			}
+		}
+		return null;
 	}
 
 	/** Variant keys look like {@code facing=north,lit=true}. An empty key matches every state. */

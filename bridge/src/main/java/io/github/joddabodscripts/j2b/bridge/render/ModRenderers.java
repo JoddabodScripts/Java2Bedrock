@@ -1,19 +1,29 @@
 package io.github.joddabodscripts.j2b.bridge.render;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import eu.pb4.polymer.resourcepack.api.ResourcePackBuilder;
 import io.github.joddabodscripts.j2b.bridge.BridgedMods;
 import io.github.joddabodscripts.j2b.bridge.J2bBridge;
 import io.github.joddabodscripts.j2b.bridge.api.BlockEntityVisuals.ItemPart;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
-import net.minecraft.client.renderer.OrderedSubmitNodeCollector;
+import io.github.joddabodscripts.j2b.bridge.client.ClientClasses;
+import io.github.joddabodscripts.j2b.bridge.client.ClientContext;
+import io.github.joddabodscripts.j2b.bridge.client.ClientRegistrations;
+import net.minecraft.world.level.block.entity.BlockEntityType;
+import net.minecraft.client.model.Model;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.client.renderer.blockentity.state.BlockEntityRenderState;
-import net.minecraft.client.renderer.item.ItemModelResolver;
+import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 import org.objectweb.asm.ClassReader;
@@ -21,6 +31,9 @@ import org.objectweb.asm.Opcodes;
 
 import java.io.IOException;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
@@ -38,29 +51,88 @@ import java.util.stream.Stream;
 /**
  * Runs a mod's own block entity renderers on the server.
  *
- * <p>The renderers ship in the mod's jar even on a dedicated server; only the client classes
- * they call are missing. The bridge carries small stand-ins for the handful a typical renderer
- * touches (the matrix stack, item render states, the renderer interface). Running a renderer
- * then yields each item it draws with its exact pose, which becomes a display entity. A renderer
- * that reaches for anything else (fonts, entity models, the client instance) fails, gets logged
- * once, and is left out.
+ * <p>The renderers ship in the mod's jar even on a dedicated server. {@link ClientClasses} puts the
+ * game's client classes next to them, and the renderer draws into a collector that keeps what it
+ * submits: items, with their exact pose, and entity-style models such as a chest, split into
+ * parts (see {@link ModelParts}). Each becomes a display entity. A renderer that needs something
+ * the server can't provide (fonts, the GPU, a model layer only its client setup registers) fails,
+ * gets logged once, and is left out.
  */
 public final class ModRenderers {
 	private static final String RENDERER = "net/minecraft/client/renderer/blockentity/BlockEntityRenderer";
-	private static final SubmitNodeCollector COLLECTOR = new SubmitNodeCollector() {
-		@Override
-		public OrderedSubmitNodeCollector order(int order) {
-			return this;
-		}
-	};
+	/** Takes every kind of submit, keeps models and items, and ignores the rest. */
+	private static final class Collector {
+		// In its own class so nothing touches client classes until they're known to be there.
+		static final SubmitNodeCollector INSTANCE = (SubmitNodeCollector) Proxy.newProxyInstance(
+				ModRenderers.class.getClassLoader(), new Class<?>[]{SubmitNodeCollector.class}, ModRenderers::collect);
+	}
+
+	private static final int MAX_STATES_PER_BLOCK = 256;
 
 	private static @Nullable Map<Class<?>, BlockEntityRenderer<?, ?>> renderers;
 	private static final Map<Class<?>, Optional<BlockEntityRenderer<?, ?>>> BY_CLASS = new HashMap<>();
 	private static final Set<BlockEntityRenderer<?, ?>> BROKEN = new HashSet<>();
 
+	private static @Nullable Object collect(Object proxy, Method method, Object @Nullable [] args) throws Throwable {
+		if (method.getName().equals("order")) {
+			return proxy;
+		}
+		if (method.getName().equals("submitModel") && !method.isDefault() && args != null) {
+			// (model, state, poseStack, renderType, light, overlay, tint, uvMapping, outline)
+			RenderCapture.model((Model<?>) args[0], args[1], (PoseStack) args[2], (RenderType) args[3], args[7]);
+			return null;
+		}
+		if (method.isDefault()) {
+			return InvocationHandler.invokeDefault(proxy, method, args);
+		}
+		return switch (method.getName()) {
+			case "hashCode" -> System.identityHashCode(proxy);
+			case "equals" -> proxy == args[0];
+			case "toString" -> "j2b submit collector";
+			default -> null;
+		};
+	}
+
+	/**
+	 * Runs every renderer once for each block state that has it, and puts the models they draw in
+	 * the resource pack.
+	 */
+	public static void addModels(ResourcePackBuilder builder) {
+		if (!ClientClasses.available()) {
+			return;
+		}
+		prepare();
+		ModelParts.prepare(() -> ModEntityRenderers.prepare(J2bBridge.server() == null ? null : J2bBridge.server().overworld()));
+		ModelParts.write(builder);
+	}
+
+	private static void prepare() {
+		ModelParts.prepare(() -> {
+			for (Block block : BuiltInRegistries.BLOCK) {
+				if (!(block instanceof EntityBlock entityBlock) || !BridgedMods.isBridged(BuiltInRegistries.BLOCK.getKey(block).getNamespace())) {
+					continue;
+				}
+				for (BlockState state : block.getStateDefinition().getPossibleStates().stream().limit(MAX_STATES_PER_BLOCK).toList()) {
+					try {
+						BlockEntity blockEntity = entityBlock.newBlockEntity(BlockPos.ZERO, state);
+						if (blockEntity != null) {
+							render(blockEntity, part -> {
+							});
+						}
+					} catch (Throwable e) {
+						J2bBridge.LOGGER.debug("Could not make a block entity for {}", state, e);
+					}
+				}
+			}
+		});
+	}
+
 	/** Runs the renderer for this block entity, if its mod has one the bridge can use. */
-	public static boolean render(BlockEntity blockEntity, Consumer<ItemPart> out) {
-		BlockEntityRenderer<?, ?> renderer = find(blockEntity.getClass());
+	public static synchronized boolean render(BlockEntity blockEntity, Consumer<ItemPart> out) {
+		if (!ClientClasses.available()) {
+			return false;
+		}
+		BlockEntityRenderer<?, ?> renderer = find(blockEntity);
 		if (renderer == null || BROKEN.contains(renderer)) {
 			return false;
 		}
@@ -80,13 +152,42 @@ public final class ModRenderers {
 		T typed = (T) blockEntity;
 		S state = renderer.createRenderState();
 		Vec3 camera = Vec3.atCenterOf(blockEntity.getBlockPos()).add(0, 2, 0);
-		renderer.extractRenderState(typed, state, 0, camera, null);
+		renderer.extractRenderState(typed, state, 1, camera, null);
 		CameraRenderState cameraState = new CameraRenderState();
 		cameraState.pos = camera;
 		cameraState.blockPos = blockEntity.getBlockPos().above(2);
-		renderer.submit(state, new PoseStack(), COLLECTOR, cameraState);
+		renderer.submit(state, new PoseStack(), Collector.INSTANCE, cameraState);
 	}
 
+	static SubmitNodeCollector collector() {
+		return Collector.INSTANCE;
+	}
+
+	private static final Map<BlockEntityType<?>, Optional<BlockEntityRenderer<?, ?>>> BY_TYPE = new HashMap<>();
+
+	/** The renderer the mod registered for this type in its client setup, built once. */
+	private static @Nullable BlockEntityRenderer<?, ?> registered(BlockEntityType<?> type) {
+		ClientContext.get();
+		return BY_TYPE.computeIfAbsent(type, t -> {
+			BlockEntityRendererProvider<?, ?> provider = ClientRegistrations.blockEntityRenderers().get(t);
+			if (provider == null) {
+				return Optional.empty();
+			}
+			try {
+				return Optional.of(provider.create(ClientContext.get()));
+			} catch (Throwable e) {
+				J2bBridge.LOGGER.info("Skipping renderer for {}: {}", BuiltInRegistries.BLOCK_ENTITY_TYPE.getKey(t), e.toString());
+				return Optional.empty();
+			}
+		}).orElse(null);
+	}
+
+	private static @Nullable BlockEntityRenderer<?, ?> find(BlockEntity blockEntity) {
+		BlockEntityRenderer<?, ?> registered = registered(blockEntity.getType());
+		return registered != null ? registered : find(blockEntity.getClass());
+	}
+
+	/** Falls back to looking through the mod's classes, for renderers its setup didn't reach. */
 	private static @Nullable BlockEntityRenderer<?, ?> find(Class<?> blockEntityClass) {
 		return BY_CLASS.computeIfAbsent(blockEntityClass, type -> {
 			Map<Class<?>, BlockEntityRenderer<?, ?>> all = all();
@@ -168,7 +269,7 @@ public final class ModRenderers {
 			Class<?>[] params = constructor.getParameterTypes();
 			constructor.setAccessible(true);
 			if (params.length == 1 && params[0] == BlockEntityRendererProvider.Context.class) {
-				return (BlockEntityRenderer<?, ?>) constructor.newInstance(new BlockEntityRendererProvider.Context(new ItemModelResolver()));
+				return (BlockEntityRenderer<?, ?>) constructor.newInstance(ClientContext.get());
 			}
 			if (params.length == 0) {
 				return (BlockEntityRenderer<?, ?>) constructor.newInstance();

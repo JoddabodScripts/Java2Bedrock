@@ -30,9 +30,10 @@ dependencies {
 	implementation "eu.pb4:polymer-bundled:${project.polymer_version}"
 }
 
-// Server-side stand-ins for the few client classes a block entity renderer needs. They carry
-// the client classes' names so a mod's renderer links against them. See render/ModRenderers.
-sourceSets.main.java.srcDir 'src/shim/java'
+// Fabric's client rendering registries are switched off on a dedicated server. These stand-ins
+// take their place there, so mods' client setup can run and say which renderers and model
+// layers they use. See client/ClientRegistrations.
+sourceSets.main.java.srcDir 'src/fabricStandIns/java'
 
 loom {
 	runs {

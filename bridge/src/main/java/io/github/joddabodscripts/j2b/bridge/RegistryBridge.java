@@ -15,6 +15,7 @@ import io.github.joddabodscripts.j2b.bridge.entity.EntityBridge;
 import io.github.joddabodscripts.j2b.bridge.item.ItemBridge;
 import io.github.joddabodscripts.j2b.bridge.other.EffectBridge;
 import io.github.joddabodscripts.j2b.bridge.other.ParticleBridge;
+import io.github.joddabodscripts.j2b.bridge.render.ModRenderers;
 import io.github.joddabodscripts.j2b.bridge.resource.ItemModelFixer;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -53,6 +54,8 @@ public final class RegistryBridge {
 			builder.addPreFinishTask(ItemModelFixer::fix);
 			EffectBridge.addNames(builder);
 			builder.addPreFinishTask(EffectBridge::addIcons);
+			// Not a pre-finish task: atlas files are merged before those run.
+			ModRenderers.addModels(builder);
 		});
 		BlockBridge.finish();
 		J2bBridge.LOGGER.info("Bridged content for vanilla clients from {}: {}", BridgedMods.namespaces(), counts);

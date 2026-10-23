@@ -27,6 +27,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Picks a vanilla block state for every state of a modded block.
@@ -38,7 +39,7 @@ import java.util.Set;
  */
 public final class BlockBridge {
 	/** Block models that display entities draw, so the resource pack can give each an item model. */
-	static final Set<Identifier> DISPLAYED_MODELS = new HashSet<>();
+	static final Set<Identifier> DISPLAYED_MODELS = ConcurrentHashMap.newKeySet();
 	private static final Map<String, BlockState> REQUESTED = new HashMap<>();
 	private static int requested;
 	private static int displayed;
@@ -134,6 +135,15 @@ public final class BlockBridge {
 			multi.with(toPolymer(part));
 		}
 		return multi;
+	}
+
+	/**
+	 * The item model that draws a block model, for display entities outside this class. Models
+	 * asked for before the resource pack is built get their item model in it.
+	 */
+	public static Identifier displayedModel(Identifier model) {
+		DISPLAYED_MODELS.add(model);
+		return J2bBridge.id(ModelDisplayHolder.itemModelPath(model));
 	}
 
 	/** Called once every block has been bridged. */
