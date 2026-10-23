@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the demo mod and lays out a runnable Fabric server in server/run.
+# Builds the demo mod and the bridge, and lays out a runnable Fabric server in server/run.
 # Versions come from gradle.properties, so bumping Minecraft happens in one place.
 # Needs Java 25, curl and python3.
 set -euo pipefail
@@ -39,10 +39,12 @@ modrinth() {
 
 modrinth fabric-api "$fabric_api"
 modrinth polymer "$polymer"
+# The mod the bridge is tested against. Delete it from mods/ to run without it.
+modrinth farmers-delight-refabricated "$(prop farmers_delight_version)"
 
-(cd "$root" && ./gradlew :demo:build -q)
-rm -f "$run"/mods/j2b-demo-*.jar
-cp "$root"/demo/build/libs/j2b-demo-*.jar "$run/mods/"
+(cd "$root" && ./gradlew :demo:build :bridge:build -q)
+rm -f "$run"/mods/j2b-demo-*.jar "$run"/mods/j2b-bridge-*.jar
+cp "$root"/demo/build/libs/j2b-demo-*.jar "$root"/bridge/build/libs/j2b-bridge-*.jar "$run/mods/"
 
 echo "eula=true" > "$run/eula.txt"
 [ -f "$run/server.properties" ] || cp "$root/server/server.properties" "$run/server.properties"

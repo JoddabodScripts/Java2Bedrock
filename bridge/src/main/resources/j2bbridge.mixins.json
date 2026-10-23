@@ -1,0 +1,14 @@
+{
+	"required": true,
+	"package": "io.github.joddabodscripts.j2b.bridge.mixin",
+	"compatibilityLevel": "JAVA_25",
+	"mixins": [
+		"BuiltInRegistriesMixin",
+		"AbstractContainerMenuAccessor",
+		"ClientboundRecipeBookAddPacketMixin",
+		"ServerPlayerMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}

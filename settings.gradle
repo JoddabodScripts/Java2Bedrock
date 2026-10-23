@@ -12,3 +12,4 @@ pluginManagement {
 rootProject.name = 'java2bedrock'
 
 include 'demo'
+include 'bridge'
