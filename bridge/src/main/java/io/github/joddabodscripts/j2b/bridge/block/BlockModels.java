@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import io.github.joddabodscripts.j2b.bridge.Assets;
+import io.github.joddabodscripts.j2b.bridge.render.BakedBlockModels;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.GsonHelper;
@@ -41,7 +42,7 @@ public final class BlockModels {
 		if (root.has("variants")) {
 			for (Map.Entry<String, JsonElement> variant : root.getAsJsonObject("variants").entrySet()) {
 				if (matchesVariantKey(state, variant.getKey())) {
-					parts.add(refs(variant.getValue()));
+					parts.add(refs(state, variant.getValue()));
 					break;
 				}
 			}
@@ -49,7 +50,7 @@ public final class BlockModels {
 			for (JsonElement part : root.getAsJsonArray("multipart")) {
 				JsonObject obj = part.getAsJsonObject();
 				if (!obj.has("when") || matchesCondition(state, obj.getAsJsonObject("when"))) {
-					parts.add(refs(obj.get("apply")));
+					parts.add(refs(state, obj.get("apply")));
 				}
 			}
 		}
@@ -57,8 +58,14 @@ public final class BlockModels {
 		return parts;
 	}
 
-	private static List<ModelRef> refs(JsonElement element) {
+	private static List<ModelRef> refs(BlockState state, JsonElement element) {
 		List<ModelRef> refs = new ArrayList<>();
+		JsonElement first = element.isJsonArray() && !element.getAsJsonArray().isEmpty() ? element.getAsJsonArray().get(0) : element;
+		if (first.isJsonObject() && BakedBlockModels.needsBaking(first.getAsJsonObject())) {
+			// Built by the mod's own model loader, so the server bakes it into a plain model.
+			refs.add(new ModelRef(BakedBlockModels.request(state, element), 0, 0, false, 1));
+			return refs;
+		}
 		for (JsonElement e : element.isJsonArray() ? element.getAsJsonArray() : List.of(element)) {
 			ModelRef ref = ref(e.getAsJsonObject());
 			if (ref != null) {
@@ -85,8 +92,8 @@ public final class BlockModels {
 
 	/**
 	 * Some mods register their own model loader on the client (Fabric's {@code fabric:type}) and
-	 * list the models it switches between as plain fields. The server can't run that loader, so it
-	 * shows the first listed model that exists.
+	 * list the models it switches between as plain fields. When the server can't bake with that
+	 * loader (see {@link BakedBlockModels}), it shows the first listed model that exists.
 	 */
 	private static @Nullable Identifier customModel(JsonObject obj) {
 		for (Map.Entry<String, JsonElement> entry : obj.entrySet()) {

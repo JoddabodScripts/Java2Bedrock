@@ -6,6 +6,11 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import eu.pb4.polymer.resourcepack.api.ResourcePackBuilder;
 import io.github.joddabodscripts.j2b.bridge.BridgedMods;
+import io.github.joddabodscripts.j2b.bridge.block.BlockModels;
+import io.github.joddabodscripts.j2b.bridge.block.BlockModels.ModelRef;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.item.BlockItem;
 import org.jspecify.annotations.Nullable;
 
 import java.nio.charset.StandardCharsets;
@@ -18,7 +23,8 @@ import java.util.Map;
  *
  * <p>A vanilla client refuses the whole file when it meets an unknown type, and the item turns
  * into the missing-texture cube. Each unknown node is replaced by the closest plain model found
- * inside it, which keeps the item's normal look and drops only the special behaviour.
+ * inside it, which keeps the item's normal look and drops only the special behaviour. A block item
+ * with nothing plain inside shows its block's model.
  */
 public final class ItemModelFixer {
 	private static final Gson GSON = new Gson();
@@ -40,7 +46,7 @@ public final class ItemModelFixer {
 			}
 			JsonObject root = JsonParser.parseString(new String(data, StandardCharsets.UTF_8)).getAsJsonObject();
 			if (root.has("model") && root.get("model").isJsonObject()) {
-				JsonObject fixed = fixNode(root.getAsJsonObject("model"));
+				JsonObject fixed = fixNode(root.getAsJsonObject("model"), blockModel(path));
 				if (fixed != root.getAsJsonObject("model")) {
 					root.add("model", fixed);
 					builder.addData(path, GSON.toJson(root).getBytes(StandardCharsets.UTF_8));
@@ -49,32 +55,52 @@ public final class ItemModelFixer {
 		}
 	}
 
+	/**
+	 * The model a block item's block shows, as a plain model node, for items drawn only by the
+	 * mod's own code. Null for other items.
+	 */
+	private static @Nullable JsonObject blockModel(String path) {
+		String[] parts = path.substring("assets/".length(), path.length() - ".json".length()).split("/items/", 2);
+		Identifier id = Identifier.tryBuild(parts[0], parts[1]);
+		if (id == null || !(BuiltInRegistries.ITEM.getValue(id) instanceof BlockItem item)) {
+			return null;
+		}
+		List<List<ModelRef>> models = BlockModels.forState(item.getBlock().defaultBlockState());
+		if (models.isEmpty()) {
+			return null;
+		}
+		JsonObject plain = new JsonObject();
+		plain.addProperty("type", "minecraft:model");
+		plain.addProperty("model", models.getFirst().getFirst().model().toString());
+		return plain;
+	}
+
 	/** Returns the node itself when it is fine, or a replacement when something inside was not. */
-	private static JsonObject fixNode(JsonObject node) {
+	private static JsonObject fixNode(JsonObject node, @Nullable JsonObject blockModel) {
 		String type = node.has("type") ? node.get("type").getAsString() : "";
 		if (!isVanilla(type)) {
-			return replacementFor(node);
+			return replacementFor(node, blockModel);
 		}
 		boolean changed = false;
 		JsonObject copy = node.deepCopy();
 		switch (stripNamespace(type)) {
 			case "condition" -> {
 				if (!isVanilla(string(node, "property"))) {
-					return fixNode(node.getAsJsonObject("on_false"));
+					return fixNode(node.getAsJsonObject("on_false"), blockModel);
 				}
-				changed |= fixChild(copy, "on_true");
-				changed |= fixChild(copy, "on_false");
+				changed |= fixChild(copy, "on_true", blockModel);
+				changed |= fixChild(copy, "on_false", blockModel);
 			}
 			case "select", "range_dispatch" -> {
 				if (!isVanilla(string(node, "property"))) {
 					JsonObject fallback = node.has("fallback") ? node.getAsJsonObject("fallback") : firstPlainModel(node);
-					return fallback != null ? fixNode(fallback) : empty();
+					return fallback != null ? fixNode(fallback, blockModel) : empty();
 				}
-				changed |= fixChild(copy, "fallback");
+				changed |= fixChild(copy, "fallback", blockModel);
 				String listName = stripNamespace(type).equals("select") ? "cases" : "entries";
 				if (copy.has(listName)) {
 					for (JsonElement entry : copy.getAsJsonArray(listName)) {
-						changed |= fixChild(entry.getAsJsonObject(), "model");
+						changed |= fixChild(entry.getAsJsonObject(), "model", blockModel);
 					}
 				}
 			}
@@ -82,7 +108,7 @@ public final class ItemModelFixer {
 				var models = copy.getAsJsonArray("models");
 				for (int i = 0; i < models.size(); i++) {
 					JsonObject child = models.get(i).getAsJsonObject();
-					JsonObject fixed = fixNode(child);
+					JsonObject fixed = fixNode(child, blockModel);
 					if (fixed != child) {
 						models.set(i, fixed);
 						changed = true;
@@ -104,12 +130,12 @@ public final class ItemModelFixer {
 		return changed ? copy : node;
 	}
 
-	private static boolean fixChild(JsonObject parent, String key) {
+	private static boolean fixChild(JsonObject parent, String key, @Nullable JsonObject blockModel) {
 		if (!parent.has(key) || !parent.get(key).isJsonObject()) {
 			return false;
 		}
 		JsonObject child = parent.getAsJsonObject(key);
-		JsonObject fixed = fixNode(child);
+		JsonObject fixed = fixNode(child, blockModel);
 		if (fixed != child) {
 			parent.add(key, fixed);
 			return true;
@@ -117,9 +143,12 @@ public final class ItemModelFixer {
 		return false;
 	}
 
-	private static JsonObject replacementFor(JsonObject unknown) {
+	private static JsonObject replacementFor(JsonObject unknown, @Nullable JsonObject blockModel) {
 		JsonObject plain = firstPlainModel(unknown);
-		return plain != null ? plain : empty();
+		if (plain != null) {
+			return plain;
+		}
+		return blockModel != null ? blockModel : empty();
 	}
 
 	/** Depth-first search for a {@code minecraft:model} node. */

@@ -17,7 +17,16 @@ import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.client.renderer.item.ItemModelResolver;
 import net.minecraft.client.renderer.item.ItemStackRenderState;
 import net.minecraft.client.renderer.special.SpecialModelRenderer;
+import com.mojang.blaze3d.platform.Transparency;
+import net.minecraft.client.renderer.texture.SpriteContents;
+import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite;
+import net.minecraft.client.resources.model.ModelDebugName;
+import net.minecraft.client.resources.model.sprite.AtlasManager;
+import net.minecraft.client.resources.model.sprite.Material;
+import net.minecraft.client.resources.model.sprite.MaterialBaker;
+import net.minecraft.resources.Identifier;
 import net.minecraft.client.resources.model.sprite.SpriteId;
 import net.minecraft.world.entity.ItemOwner;
 import net.minecraft.world.item.BlockItem;
@@ -34,7 +43,9 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.WeakHashMap;
+import java.util.ArrayList;
+import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.function.Consumer;
 
 /**
@@ -46,7 +57,11 @@ import java.util.function.Consumer;
  * renderer that needs them is skipped.
  */
 public final class ClientContext {
-	private static final Map<TextureAtlasSprite, SpriteId> SPRITES = new WeakHashMap<>();
+	private static final Map<TextureAtlasSprite, SpriteId> SPRITES = new IdentityHashMap<>();
+	private static final Map<SpriteId, TextureAtlasSprite> SPRITES_BY_ID = new HashMap<>();
+	private static final List<SpriteId> SPRITE_ORDER = new ArrayList<>();
+	private static final Map<Identifier, TextureAtlas> ATLASES = new HashMap<>();
+	private static final Identifier BLOCK_ATLAS = TextureAtlas.LOCATION_BLOCKS;
 	private static BlockEntityRendererProvider.@Nullable Context context;
 	private static EntityRendererProvider.@Nullable Context entityContext;
 
@@ -78,7 +93,7 @@ public final class ClientContext {
 	}
 
 	/** The game's own model layers plus the ones mods registered in their client setup. */
-	private static EntityModelSet models() {
+	public static EntityModelSet models() {
 		Map<ModelLayerLocation, LayerDefinition> layers = new HashMap<>(LayerDefinitions.createRoots());
 		ClientRegistrations.layers().forEach((location, definition) -> {
 			try {
@@ -97,15 +112,138 @@ public final class ClientContext {
 		}
 	}
 
-	private static TextureAtlasSprite sprite(SpriteId id) {
-		try {
-			TextureAtlasSprite sprite = (TextureAtlasSprite) Unsafe.allocate(TextureAtlasSprite.class);
-			synchronized (SPRITES) {
-				SPRITES.put(sprite, id);
+	/** A block texture for baking models. See {@link #sprite}. */
+	public static Material.Baked bakedMaterial(Material material) {
+		return new Material.Baked(sprite(new SpriteId(BLOCK_ATLAS, material.sprite())), material.forceTranslucent());
+	}
+
+	/**
+	 * A stand-in sprite for a texture. Each texture gets its own square of a made-up atlas, one unit
+	 * wide, laid out in a row: the nth texture covers u from n to n + 1 and v from 0 to 1. So a
+	 * baked face's texture coordinates say both which texture it uses ({@link #spriteAt}) and where
+	 * on that texture. It counts as a 16 by 16 opaque texture.
+	 */
+	public static TextureAtlasSprite sprite(SpriteId id) {
+		synchronized (SPRITES) {
+			TextureAtlasSprite cached = SPRITES_BY_ID.get(id);
+			if (cached != null) {
+				return cached;
 			}
-			return sprite;
-		} catch (ReflectiveOperationException e) {
+			try {
+				int index = SPRITE_ORDER.size();
+				SpriteContents contents = (SpriteContents) Unsafe.allocate(SpriteContents.class);
+				set(SpriteContents.class, contents, "name", id.texture());
+				set(SpriteContents.class, contents, "width", 16);
+				set(SpriteContents.class, contents, "height", 16);
+				set(SpriteContents.class, contents, "transparency", Transparency.NONE);
+				TextureAtlasSprite sprite = (TextureAtlasSprite) Unsafe.allocate(TextureAtlasSprite.class);
+				set(TextureAtlasSprite.class, sprite, "atlasLocation", id.atlasLocation());
+				set(TextureAtlasSprite.class, sprite, "contents", contents);
+				set(TextureAtlasSprite.class, sprite, "u0", (float) index);
+				set(TextureAtlasSprite.class, sprite, "u1", index + 1f);
+				set(TextureAtlasSprite.class, sprite, "v1", 1f);
+				SPRITE_ORDER.add(id);
+				SPRITES_BY_ID.put(id, sprite);
+				SPRITES.put(sprite, id);
+				return sprite;
+			} catch (ReflectiveOperationException e) {
+				throw new IllegalStateException(e);
+			}
+		}
+	}
+
+	/** The texture whose square of the made-up atlas holds this u. See {@link #sprite}. */
+	public static @Nullable SpriteId spriteAt(float u) {
+		synchronized (SPRITES) {
+			int index = (int) Math.floor(u);
+			return index >= 0 && index < SPRITE_ORDER.size() ? SPRITE_ORDER.get(index) : null;
+		}
+	}
+
+	/** Bakes block models with whole-atlas sprites for every texture. See {@link #bakedMaterial}. */
+	public static MaterialBaker materials() {
+		try {
+			// Made without running its constructor, which needs the real texture atlases.
+			return (MaterialBaker) Unsafe.allocate(Materials.class);
+		} catch (InstantiationException e) {
 			throw new IllegalStateException(e);
+		}
+	}
+
+	private static final class Materials extends MaterialBaker {
+		private Materials() {
+			super(null, null);
+		}
+
+		@Override
+		public Material.Baked get(Material material, ModelDebugName name) {
+			return bakedMaterial(material);
+		}
+
+		@Override
+		public Material.Baked reportMissingReference(String reference, ModelDebugName name) {
+			return bakedMaterial(new Material(MissingTextureAtlasSprite.getLocation()));
+		}
+
+		@Override
+		public void logMissingTextures() {
+		}
+	}
+
+	private static void set(Class<?> owner, Object target, String name, Object value) throws ReflectiveOperationException {
+		Field field = owner.getDeclaredField(name);
+		field.setAccessible(true);
+		field.set(target, value);
+	}
+
+	/** Texture atlases that hand out the stand-in sprites. Models look sprites up here while baking. */
+	private static final class Atlases extends AtlasManager {
+		private Atlases() {
+			super(null, 0);
+		}
+
+		@Override
+		public TextureAtlas getAtlasOrThrow(Identifier location) {
+			// Made without running a constructor, so the atlases live in a static map.
+			synchronized (ATLASES) {
+				return ATLASES.computeIfAbsent(location, id -> {
+					try {
+						Atlas atlas = (Atlas) Unsafe.allocate(Atlas.class);
+						atlas.id = id;
+						return atlas;
+					} catch (InstantiationException e) {
+						throw new IllegalStateException(e);
+					}
+				});
+			}
+		}
+
+		@Override
+		public TextureAtlasSprite get(SpriteId id) {
+			return sprite(id);
+		}
+	}
+
+	private static final class Atlas extends TextureAtlas {
+		private Identifier id;
+
+		private Atlas() {
+			super(LOCATION_BLOCKS);
+		}
+
+		@Override
+		public TextureAtlasSprite getSprite(Identifier texture) {
+			return sprite(new SpriteId(this.id, texture));
+		}
+
+		@Override
+		public TextureAtlasSprite missingSprite() {
+			return getSprite(MissingTextureAtlasSprite.getLocation());
+		}
+
+		@Override
+		public Identifier location() {
+			return this.id;
 		}
 	}
 
@@ -119,7 +257,9 @@ public final class ClientContext {
 			Field instance = Minecraft.class.getDeclaredField("instance");
 			instance.setAccessible(true);
 			if (instance.get(null) == null) {
-				instance.set(null, Unsafe.allocate(Minecraft.class));
+				Minecraft minecraft = (Minecraft) Unsafe.allocate(Minecraft.class);
+				set(Minecraft.class, minecraft, "atlasManager", Unsafe.allocate(Atlases.class));
+				instance.set(null, minecraft);
 			}
 		} catch (Throwable e) {
 			J2bBridge.LOGGER.info("Renderers that look up the client instance won't run: {}", e.toString());
@@ -186,7 +326,9 @@ public final class ClientContext {
 		public void submit(@Nullable ItemStack stack, PoseStack poseStack, SubmitNodeCollector collector,
 						   int lightCoords, int overlayCoords, boolean hasFoil, int outlineColor) {
 			if (stack != null) {
-				RenderCapture.item(stack, this.context, poseStack.last().pose());
+				// The item layer moved the pose to the item model's corner, as models are drawn
+				// from there. A display entity places the item by its centre.
+				RenderCapture.item(stack, this.context, new Matrix4f(poseStack.last().pose()).translate(0.5f, 0.5f, 0.5f));
 			}
 		}
 

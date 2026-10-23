@@ -52,8 +52,6 @@ public final class RegistryBridge {
 		PolymerResourcePackUtils.markAsRequired();
 		PolymerResourcePackUtils.RESOURCE_PACK_CREATION_EVENT.register(builder -> {
 			builder.addPreFinishTask(ItemModelFixer::fix);
-			EffectBridge.addNames(builder);
-			builder.addPreFinishTask(EffectBridge::addIcons);
 			// Not a pre-finish task: atlas files are merged before those run.
 			ModRenderers.addModels(builder);
 		});

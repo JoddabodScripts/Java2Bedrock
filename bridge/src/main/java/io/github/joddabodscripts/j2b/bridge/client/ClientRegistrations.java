@@ -60,7 +60,11 @@ public final class ClientRegistrations {
 			try {
 				entrypoint.getEntrypoint().onInitializeClient();
 			} catch (Throwable e) {
-				J2bBridge.LOGGER.info("Client setup of {} stopped early on the server, which is expected: {}", mod, e.toString());
+				Throwable cause = e;
+				while (cause.getCause() != null) {
+					cause = cause.getCause();
+				}
+				J2bBridge.LOGGER.info("Client setup of {} stopped early on the server, which is expected: {}", mod, cause.toString());
 			}
 		}
 		copyFromGame(EntityRenderers.class, ENTITY_RENDERERS);

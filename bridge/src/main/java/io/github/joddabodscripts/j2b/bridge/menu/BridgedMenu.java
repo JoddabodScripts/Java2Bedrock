@@ -4,7 +4,9 @@ import io.github.joddabodscripts.j2b.bridge.BridgedMods;
 import io.github.joddabodscripts.j2b.bridge.mixin.AbstractContainerMenuAccessor;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.contents.TranslatableContents;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Container;
@@ -41,6 +43,25 @@ public class BridgedMenu extends AbstractContainerMenu {
 	/** Index of the real menu's slot behind each of our slots, or -1 for fillers. */
 	private final int[] toReal;
 	private final @Nullable FillerSlot progressSlot;
+
+	/**
+	 * Mods' screens often draw their own title and leave the one in the menu untranslated. A vanilla
+	 * client would show the raw key, so such a title becomes the name of the mod it belongs to.
+	 */
+	public static Component readableTitle(Component title) {
+		if (!(title.getContents() instanceof TranslatableContents translatable) || Language.getInstance().has(translatable.getKey())) {
+			return title;
+		}
+		for (String part : translatable.getKey().split("\\.")) {
+			if (BridgedMods.namespaces().contains(part)) {
+				var mod = BridgedMods.container(part);
+				if (mod.isPresent()) {
+					return Component.literal(mod.get().getMetadata().getName());
+				}
+			}
+		}
+		return title;
+	}
 
 	public static @Nullable AbstractContainerMenu wrapIfNeeded(@Nullable AbstractContainerMenu menu, ServerPlayer player) {
 		if (menu == null || menu instanceof BridgedMenu) {

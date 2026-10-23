@@ -2,6 +2,7 @@ package io.github.joddabodscripts.j2b.bridge;
 
 import io.github.joddabodscripts.j2b.bridge.block.SignEditing;
 import io.github.joddabodscripts.j2b.bridge.entity.EntityVisualHolder;
+import io.github.joddabodscripts.j2b.bridge.other.EffectBridge;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.minecraft.server.MinecraftServer;
@@ -29,6 +30,7 @@ public class J2bBridge implements ModInitializer {
 		ServerLifecycleEvents.SERVER_STARTING.register(server -> J2bBridge.server = server);
 		ServerLifecycleEvents.SERVER_STOPPED.register(server -> J2bBridge.server = null);
 		EntityVisualHolder.register();
+		EffectBridge.register();
 	}
 
 	public static @Nullable MinecraftServer server() {

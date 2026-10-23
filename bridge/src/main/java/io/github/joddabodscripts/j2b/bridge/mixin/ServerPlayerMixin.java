@@ -27,11 +27,17 @@ public class ServerPlayerMixin {
 	 * Fabric sends its own open-screen packet for {@link ExtendedMenuProvider}s, which vanilla
 	 * clients can't read, and refuses vanilla menu types from them. A bridged mod's provider is
 	 * passed on as a plain one; the extra data it would send only matters to the mod's own screen.
+	 * A title the mod's screen never shows may have no translation, so it gets a readable one.
 	 */
 	@ModifyVariable(method = "openMenu", at = @At("HEAD"), argsOnly = true)
 	private @Nullable MenuProvider j2bbridge$hideExtendedProvider(@Nullable MenuProvider provider) {
-		if (provider instanceof ExtendedMenuProvider<?> && BridgedMods.ownsClass(provider.getClass())) {
-			return new PlainProvider(provider);
+		if (provider == null) {
+			return null;
+		}
+		boolean extended = provider instanceof ExtendedMenuProvider<?> && BridgedMods.ownsClass(provider.getClass());
+		Component title = BridgedMenu.readableTitle(provider.getDisplayName());
+		if (extended || title != provider.getDisplayName()) {
+			return new PlainProvider(provider, title);
 		}
 		return provider;
 	}
@@ -49,10 +55,10 @@ public class ServerPlayerMixin {
 		}
 	}
 
-	private record PlainProvider(MenuProvider provider) implements MenuProvider {
+	private record PlainProvider(MenuProvider provider, Component title) implements MenuProvider {
 		@Override
 		public Component getDisplayName() {
-			return this.provider.getDisplayName();
+			return this.title;
 		}
 
 		@Override

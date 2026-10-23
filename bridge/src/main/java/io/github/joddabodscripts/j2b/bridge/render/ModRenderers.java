@@ -103,6 +103,11 @@ public final class ModRenderers {
 		}
 		prepare();
 		ModelParts.prepare(() -> ModEntityRenderers.prepare(J2bBridge.server() == null ? null : J2bBridge.server().overworld()));
+		try {
+			BakedBlockModels.write(builder);
+		} catch (Throwable e) {
+			J2bBridge.LOGGER.warn("Couldn't bake the blocks that use a mod's model loader, they stay invisible", e);
+		}
 		ModelParts.write(builder);
 	}
 

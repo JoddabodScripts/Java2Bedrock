@@ -59,6 +59,8 @@ public final class ModelParts {
 	private static final Map<ModelPart, String> GEOMETRY_KEYS = new IdentityHashMap<>();
 	private static final Map<String, Generated> GENERATED = new LinkedHashMap<>();
 	private static final Set<String> MISSING = new TreeSet<>();
+	/** Textures other generated models use, which need to be on the block atlas too. */
+	static final Set<String> OTHER_TEXTURES = new TreeSet<>();
 	private static boolean preparing;
 
 	/** A model written to the pack, and the scale its coordinates were shrunk by to fit. */
@@ -170,7 +172,7 @@ public final class ModelParts {
 		JsonObject faces = new JsonObject();
 		for (ModelPart.Polygon polygon : cube.polygons) {
 			Face face = Face.of(polygon.normal());
-			JsonObject json = face.json(polygon, min, max);
+			JsonObject json = face.json(vertices(polygon), min, max, "#0");
 			if (json != null) {
 				faces.add(face.name, json);
 			}
@@ -182,6 +184,16 @@ public final class ModelParts {
 		return element;
 	}
 
+	private static float[][] vertices(ModelPart.Polygon polygon) {
+		ModelPart.Vertex[] vertices = polygon.vertices();
+		float[][] result = new float[vertices.length][];
+		for (int i = 0; i < vertices.length; i++) {
+			ModelPart.Vertex v = vertices[i];
+			result[i] = new float[]{v.x(), v.y(), v.z(), v.u(), v.v()};
+		}
+		return result;
+	}
+
 	private static JsonArray vector(Vector3fc v, float scale) {
 		JsonArray array = new JsonArray();
 		array.add(v.x() * scale + 8);
@@ -191,7 +203,7 @@ public final class ModelParts {
 	}
 
 	/** The corners of each item model face, in the order the model loader assigns texture corners. */
-	private enum Face {
+	enum Face {
 		DOWN("down", "-x-y+z", "-x-y-z", "+x-y-z", "+x-y+z"),
 		UP("up", "-x+y-z", "-x+y+z", "+x+y+z", "+x+y-z"),
 		NORTH("north", "+x+y-z", "+x-y-z", "-x-y-z", "-x+y-z"),
@@ -232,15 +244,19 @@ public final class ModelParts {
 			};
 		}
 
-		@Nullable JsonObject json(ModelPart.Polygon polygon, Vector3fc min, Vector3fc max) {
+		/**
+		 * The face of a box with corners {@code min} and {@code max}, drawn like the given polygon.
+		 * Each vertex is x, y, z, then u and v from 0 to 1.
+		 */
+		@Nullable JsonObject json(float[][] vertices, Vector3fc min, Vector3fc max, String texture) {
 			// Texture coordinates of the polygon vertex at each face corner, in 0-16 units.
 			float[][] uv = new float[4][];
 			for (int i = 0; i < 4; i++) {
-				for (ModelPart.Vertex vertex : polygon.vertices()) {
+				for (float[] vertex : vertices) {
 					if (atCorner(vertex, this.corners[i], min, max)) {
 						// Item models only take coordinates inside the texture. Entity models
 						// sometimes reach past its edge, where nothing would be drawn anyway.
-						uv[i] = new float[]{Math.clamp(vertex.u() * 16, 0, 16), Math.clamp(vertex.v() * 16, 0, 16)};
+						uv[i] = new float[]{Math.clamp(vertex[3] * 16, 0, 16), Math.clamp(vertex[4] * 16, 0, 16)};
 						break;
 					}
 				}
@@ -265,7 +281,7 @@ public final class ModelParts {
 					uvs.add(maxUv[1]);
 					JsonObject face = new JsonObject();
 					face.add("uv", uvs);
-					face.addProperty("texture", "#0");
+					face.addProperty("texture", texture);
 					if (shift != 0) {
 						face.addProperty("rotation", shift * 90);
 					}
@@ -275,8 +291,7 @@ public final class ModelParts {
 			return null;
 		}
 
-		private boolean atCorner(ModelPart.Vertex vertex, boolean[] corner, Vector3fc min, Vector3fc max) {
-			float[] position = {vertex.x(), vertex.y(), vertex.z()};
+		private boolean atCorner(float[] position, boolean[] corner, Vector3fc min, Vector3fc max) {
 			for (int axis = 0; axis < 3; axis++) {
 				if (axis == axis()) {
 					continue;
@@ -321,7 +336,7 @@ public final class ModelParts {
 	/** Adds the generated models, and puts their textures on the block atlas so items can use them. */
 	public static void write(ResourcePackBuilder builder) {
 		addVariantTextures();
-		Set<String> textures = new TreeSet<>();
+		Set<String> textures = new TreeSet<>(OTHER_TEXTURES);
 		for (Generated generated : GENERATED.values()) {
 			Identifier id = generated.itemModel();
 			builder.addData("assets/" + id.getNamespace() + "/models/" + id.getPath() + ".json", json(generated.model()));

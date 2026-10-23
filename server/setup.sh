@@ -50,4 +50,4 @@ echo "eula=true" > "$run/eula.txt"
 [ -f "$run/server.properties" ] || cp "$root/server/server.properties" "$run/server.properties"
 [ -f "$run/config/polymer/auto-host.json" ] || cp "$root/server/auto-host.json" "$run/config/polymer/auto-host.json"
 
-echo "Server ready. Start it with: cd server/run && java -Xmx2G -jar fabric-server-launcher.jar nogui"
+echo "Server ready. Start it with: cd server/run && java -Xmx2G -Dfabric.disableEnvironmentStrip=true -jar fabric-server-launcher.jar nogui"
