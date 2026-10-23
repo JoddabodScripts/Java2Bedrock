@@ -1,9 +1,7 @@
 package io.github.joddabodscripts.j2b.bridge;
 
 import io.github.joddabodscripts.j2b.bridge.block.SignEditing;
-import io.github.joddabodscripts.j2b.bridge.compat.FarmersDelightVisuals;
 import net.fabricmc.api.ModInitializer;
-import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,9 +21,6 @@ public class J2bBridge implements ModInitializer {
 	public void onInitialize() {
 		BridgedMods.load();
 		SignEditing.register();
-		if (FabricLoader.getInstance().isModLoaded("farmersdelight")) {
-			FarmersDelightVisuals.register();
-		}
 	}
 
 	public static Identifier id(String path) {

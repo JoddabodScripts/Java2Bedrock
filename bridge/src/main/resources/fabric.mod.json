@@ -5,7 +5,7 @@
 	"name": "Java2Bedrock Bridge",
 	"description": "Makes ordinary Fabric mods work for players on unmodded clients, without changing the mods.",
 	"authors": ["JoddabodScripts"],
-	"environment": "*",
+	"environment": "server",
 	"entrypoints": {
 		"main": ["io.github.joddabodscripts.j2b.bridge.J2bBridge"]
 	},

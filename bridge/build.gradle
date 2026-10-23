@@ -28,11 +28,11 @@ dependencies {
 	// Polymer does the vanilla-client translation. The bundle has every module
 	// (core, blocks, resource pack, autohost, virtual entities).
 	implementation "eu.pb4:polymer-bundled:${project.polymer_version}"
-
-	// Only compiled against, for the hand-written visuals in the compat package. The bridge
-	// runs fine without these mods installed.
-	compileOnly "maven.modrinth:farmers-delight-refabricated:${project.farmers_delight_version}"
 }
+
+// Server-side stand-ins for the few client classes a block entity renderer needs. They carry
+// the client classes' names so a mod's renderer links against them. See render/ModRenderers.
+sourceSets.main.java.srcDir 'src/shim/java'
 
 loom {
 	runs {

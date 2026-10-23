@@ -8,6 +8,7 @@ import eu.pb4.polymer.virtualentity.api.elements.ItemDisplayElement;
 import eu.pb4.polymer.virtualentity.api.elements.TextDisplayElement;
 import io.github.joddabodscripts.j2b.bridge.J2bBridge;
 import io.github.joddabodscripts.j2b.bridge.api.BlockEntityVisuals;
+import io.github.joddabodscripts.j2b.bridge.render.ModRenderers;
 import io.github.joddabodscripts.j2b.bridge.block.BlockModels.ModelRef;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
@@ -29,6 +30,7 @@ import org.jspecify.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * Draws what a vanilla client can't with item display entities: a block's own models, for states
@@ -94,12 +96,15 @@ public class ModelDisplayHolder extends ElementHolder {
 		BlockEntityVisuals.Visual<BlockEntity> visual = blockEntity == null ? null
 				: BlockEntityVisuals.get(BuiltInRegistries.BLOCK_ENTITY_TYPE.getKey(blockEntity.getType()));
 		List<BlockEntityVisuals.ItemPart> parts = new ArrayList<>();
+		Consumer<BlockEntityVisuals.ItemPart> collect = part -> {
+			if (!part.stack().isEmpty()) {
+				parts.add(part);
+			}
+		};
 		if (visual != null) {
-			visual.collect(blockEntity, part -> {
-				if (!part.stack().isEmpty()) {
-					parts.add(part);
-				}
-			});
+			visual.collect(blockEntity, collect);
+		} else if (blockEntity != null && !(blockEntity instanceof SignBlockEntity)) {
+			ModRenderers.render(blockEntity, collect);
 		}
 		Brightness light = lightAt(attachment);
 		showParts(parts, light);
