@@ -39,7 +39,7 @@ import java.util.Set;
  * <p>Where the shape allows it, the bridge borrows an unused vanilla state (a note block for
  * full cubes, a sapling or tripwire for plants) and points it at the mod's own model in the
  * resource pack, so the client renders it like any block. Anything else becomes an invisible
- * stand-in with the right collision plus a display entity that draws the model.
+ * stand-in of about the same shape (see {@link StandIns}) plus display entities that draw the model.
  */
 public final class BlockBridge {
 	/** Block models that display entities draw, so the resource pack can give each an item model. */
@@ -156,7 +156,7 @@ public final class BlockBridge {
 					? PolymerBlockResourceUtils.requestEmpty(BlockModelType.KELP)
 					: PolymerBlockResourceUtils.requestEmpty(BlockModelType.PLANT);
 		}
-		return Blocks.BARRIER.defaultBlockState().setValue(BlockStateProperties.WATERLOGGED, waterlogged);
+		return StandIns.forState(state);
 	}
 
 	private static PolymerBlockModel[] toPolymer(List<ModelRef> refs) {

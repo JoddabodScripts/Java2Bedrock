@@ -5,7 +5,6 @@ import eu.pb4.polymer.core.api.entity.PolymerEntityUtils;
 import eu.pb4.polymer.core.api.other.PolymerComponent;
 import eu.pb4.polymer.core.api.other.PolymerConsumeEffect;
 import eu.pb4.polymer.core.api.other.PolymerMenuUtils;
-import eu.pb4.polymer.core.api.other.PolymerMobEffect;
 import eu.pb4.polymer.core.api.other.PolymerSoundEvent;
 import eu.pb4.polymer.core.api.utils.PolymerObject;
 import eu.pb4.polymer.core.api.utils.PolymerSyncedObject;
@@ -14,6 +13,7 @@ import eu.pb4.polymer.rsm.api.RegistrySyncUtils;
 import io.github.joddabodscripts.j2b.bridge.block.BlockBridge;
 import io.github.joddabodscripts.j2b.bridge.entity.EntityBridge;
 import io.github.joddabodscripts.j2b.bridge.item.ItemBridge;
+import io.github.joddabodscripts.j2b.bridge.other.EffectBridge;
 import io.github.joddabodscripts.j2b.bridge.other.ParticleBridge;
 import io.github.joddabodscripts.j2b.bridge.resource.ItemModelFixer;
 import net.minecraft.core.Registry;
@@ -49,7 +49,11 @@ public final class RegistryBridge {
 			PolymerResourcePackUtils.addModAssets(namespace);
 		}
 		PolymerResourcePackUtils.markAsRequired();
-		PolymerResourcePackUtils.RESOURCE_PACK_CREATION_EVENT.register(builder -> builder.addPreFinishTask(ItemModelFixer::fix));
+		PolymerResourcePackUtils.RESOURCE_PACK_CREATION_EVENT.register(builder -> {
+			builder.addPreFinishTask(ItemModelFixer::fix);
+			EffectBridge.addNames(builder);
+			builder.addPreFinishTask(EffectBridge::addIcons);
+		});
 		BlockBridge.finish();
 		J2bBridge.LOGGER.info("Bridged content for vanilla clients from {}: {}", BridgedMods.namespaces(), counts);
 	}
@@ -85,7 +89,7 @@ public final class RegistryBridge {
 		} else if (key == Registries.BLOCK_ENTITY_TYPE) {
 			PolymerBlockUtils.registerBlockEntity((net.minecraft.world.level.block.entity.BlockEntityType<?>) entry);
 		} else if (key == Registries.MOB_EFFECT) {
-			PolymerMobEffect.registerOverlay((net.minecraft.world.effect.MobEffect) entry);
+			EffectBridge.bridge((net.minecraft.world.effect.MobEffect) entry);
 			RegistrySyncUtils.setServerEntry(registry, entry);
 		} else if (key == Registries.SOUND_EVENT) {
 			// The sound itself ships in the resource pack, so clients can play it by name.

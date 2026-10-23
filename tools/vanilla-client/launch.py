@@ -135,6 +135,7 @@ def main():
         "tutorialStep:none\n"
         "renderDistance:6\n"
         "pauseOnLostFocus:false\n"
+        "showSubtitles:true\n"
     )
 
     command = [
