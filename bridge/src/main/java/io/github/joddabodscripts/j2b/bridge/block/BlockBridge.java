@@ -17,13 +17,8 @@ import net.minecraft.world.level.EmptyBlockGetter;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.CeilingHangingSignBlock;
-import net.minecraft.world.level.block.StandingSignBlock;
-import net.minecraft.world.level.block.WallHangingSignBlock;
-import net.minecraft.world.level.block.WallSignBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
-import net.minecraft.world.level.block.state.properties.Property;
 import org.jspecify.annotations.Nullable;
 
 import java.util.HashMap;
@@ -50,16 +45,6 @@ public final class BlockBridge {
 
 	public static void bridge(Block block) {
 		Map<BlockState, BlockState> clientStates = new IdentityHashMap<>();
-
-		// A sign has to stay a sign on the client, or players can't edit its text.
-		Block sign = vanillaSignFor(block);
-		if (sign != null) {
-			for (BlockState state : block.getStateDefinition().getPossibleStates()) {
-				clientStates.put(state, copyProperties(state, sign.defaultBlockState()));
-			}
-			PolymerBlockUtils.registerOverlay(block, new Overlay(clientStates));
-			return;
-		}
 		Map<BlockState, List<List<ModelRef>>> displays = new IdentityHashMap<>();
 
 		for (BlockState state : block.getStateDefinition().getPossibleStates()) {
@@ -83,28 +68,6 @@ public final class BlockBridge {
 		if (!displays.isEmpty() || block instanceof EntityBlock) {
 			BlockWithElementHolder.registerOverlay(block, new ModelDisplayHolder.Factory(displays));
 		}
-	}
-
-	private static @Nullable Block vanillaSignFor(Block block) {
-		return switch (block) {
-			case StandingSignBlock ignored -> Blocks.OAK_SIGN;
-			case WallSignBlock ignored -> Blocks.OAK_WALL_SIGN;
-			case CeilingHangingSignBlock ignored -> Blocks.OAK_HANGING_SIGN;
-			case WallHangingSignBlock ignored -> Blocks.OAK_WALL_HANGING_SIGN;
-			default -> null;
-		};
-	}
-
-	/** Copies every property the two states share, such as facing or rotation. */
-	private static BlockState copyProperties(BlockState from, BlockState to) {
-		for (Property<?> property : from.getProperties()) {
-			to = copyProperty(from, to, property);
-		}
-		return to;
-	}
-
-	private static <T extends Comparable<T>> BlockState copyProperty(BlockState from, BlockState to, Property<T> property) {
-		return to.hasProperty(property) ? to.setValue(property, from.getValue(property)) : to;
 	}
 
 	/** Borrows a vanilla state that renders the model directly, or returns null if none fits. */

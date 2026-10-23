@@ -5,6 +5,7 @@ import eu.pb4.polymer.virtualentity.api.ElementHolder;
 import eu.pb4.polymer.virtualentity.api.attachment.BlockAwareAttachment;
 import eu.pb4.polymer.virtualentity.api.attachment.HolderAttachment;
 import eu.pb4.polymer.virtualentity.api.elements.ItemDisplayElement;
+import eu.pb4.polymer.virtualentity.api.elements.TextDisplayElement;
 import io.github.joddabodscripts.j2b.bridge.J2bBridge;
 import io.github.joddabodscripts.j2b.bridge.api.BlockEntityVisuals;
 import io.github.joddabodscripts.j2b.bridge.block.BlockModels.ModelRef;
@@ -19,6 +20,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.SignBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
@@ -37,6 +39,8 @@ public class ModelDisplayHolder extends ElementHolder {
 	private final List<ItemDisplayElement> modelElements = new ArrayList<>();
 	private final List<ItemDisplayElement> partElements = new ArrayList<>();
 	private final List<Matrix4f> partPoses = new ArrayList<>();
+	private final List<TextDisplayElement> textElements = new ArrayList<>();
+	private final List<Matrix4f> textPoses = new ArrayList<>();
 	private @Nullable BlockState shown;
 
 	ModelDisplayHolder(Map<BlockState, List<List<ModelRef>>> displays, BlockState initial) {
@@ -97,7 +101,49 @@ public class ModelDisplayHolder extends ElementHolder {
 				}
 			});
 		}
-		showParts(parts, lightAt(attachment));
+		Brightness light = lightAt(attachment);
+		showParts(parts, light);
+
+		List<SignTexts.Line> lines = new ArrayList<>();
+		if (blockEntity instanceof SignBlockEntity sign) {
+			SignTexts.collect(sign, lines::add);
+		}
+		showText(lines, light);
+	}
+
+	private void showText(List<SignTexts.Line> lines, Brightness light) {
+		while (this.textElements.size() > lines.size()) {
+			removeElement(this.textElements.removeLast());
+			this.textPoses.removeLast();
+		}
+		for (int i = 0; i < lines.size(); i++) {
+			SignTexts.Line line = lines.get(i);
+			Matrix4f pose = new Matrix4f().translate(-0.5f, -0.5f, -0.5f).mul(line.pose());
+			Brightness lineLight = line.glowing() ? Brightness.FULL_BRIGHT : light;
+			if (i < this.textElements.size()) {
+				TextDisplayElement element = this.textElements.get(i);
+				if (!element.getText().equals(line.text())) {
+					element.setText(line.text());
+				}
+				if (!lineLight.equals(element.getBrightness())) {
+					element.setBrightness(lineLight);
+				}
+				if (!this.textPoses.get(i).equals(pose)) {
+					this.textPoses.set(i, pose);
+					element.setTransformation(pose);
+				}
+			} else {
+				TextDisplayElement element = new TextDisplayElement(line.text());
+				element.setBackground(0);
+				element.setLineWidth(1000);
+				element.setViewRange(0.5f);
+				element.setBrightness(lineLight);
+				element.setTransformation(pose);
+				this.textElements.add(element);
+				this.textPoses.add(pose);
+				addElement(element);
+			}
+		}
 	}
 
 	/**

@@ -6,6 +6,7 @@
 		"BuiltInRegistriesMixin",
 		"AbstractContainerMenuAccessor",
 		"ClientboundRecipeBookAddPacketMixin",
+		"ServerGamePacketListenerImplMixin",
 		"ServerPlayerMixin"
 	],
 	"injectors": {

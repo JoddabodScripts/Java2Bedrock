@@ -2,6 +2,7 @@ package io.github.joddabodscripts.j2b.bridge.mixin;
 
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import io.github.joddabodscripts.j2b.bridge.BridgedMods;
+import io.github.joddabodscripts.j2b.bridge.block.SignEditing;
 import io.github.joddabodscripts.j2b.bridge.menu.BridgedMenu;
 import net.fabricmc.fabric.api.menu.v1.ExtendedMenuProvider;
 import net.minecraft.network.chat.Component;
@@ -10,12 +11,16 @@ import net.minecraft.world.MenuProvider;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.level.block.entity.SignBlockEntity;
+import net.minecraft.world.level.block.entity.SignTextSlot;
 import org.jspecify.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** Swaps a mod's menu for a vanilla chest menu that drives it, right before it is opened. */
+/** Swaps modded menus for vanilla ones, and sets up sign editing for modded signs. */
 @Mixin(ServerPlayer.class)
 public class ServerPlayerMixin {
 	/**
@@ -35,6 +40,13 @@ public class ServerPlayerMixin {
 			target = "Lnet/minecraft/world/MenuProvider;createMenu(ILnet/minecraft/world/entity/player/Inventory;Lnet/minecraft/world/entity/player/Player;)Lnet/minecraft/world/inventory/AbstractContainerMenu;"))
 	private AbstractContainerMenu j2bbridge$wrapModdedMenu(AbstractContainerMenu menu) {
 		return BridgedMenu.wrapIfNeeded(menu, (ServerPlayer) (Object) this);
+	}
+
+	@Inject(method = "openTextEdit", at = @At("HEAD"), cancellable = true)
+	private void j2bbridge$showVanillaSign(SignBlockEntity sign, SignTextSlot slot, CallbackInfo ci) {
+		if (SignEditing.deferEdit((ServerPlayer) (Object) this, sign, slot)) {
+			ci.cancel();
+		}
 	}
 
 	private record PlainProvider(MenuProvider provider) implements MenuProvider {
